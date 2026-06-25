@@ -353,72 +353,64 @@ function spawnGLB(key, x, z, targetHeight, rotY) {
 // ── GLB BUILDINGS ──
 function buildGLBBuildings() {
   const gridLines = [-120, -60, 0, 60, 120];
-  // center 4 blocks → skyscrapers, outer 12 → regular buildings
   const skyscraperBlocks = [[-30,-30],[-30,30],[30,-30],[30,30]];
+
   for (let gi = 0; gi < gridLines.length - 1; gi++) {
     for (let gj = 0; gj < gridLines.length - 1; gj++) {
       const bx = (gridLines[gi] + gridLines[gi+1]) / 2;
       const bz = (gridLines[gj] + gridLines[gj+1]) / 2;
-      const blockW = gridLines[gi+1] - gridLines[gi] - ROAD_W - 8;
-      const blockD = gridLines[gj+1] - gridLines[gj] - ROAD_W - 8;
+      const blockW = gridLines[gi+1] - gridLines[gi] - ROAD_W - 6;
+      const blockD = gridLines[gj+1] - gridLines[gj] - ROAD_W - 6;
       const isSkyscraper = skyscraperBlocks.some(([sx,sz]) => sx===bx && sz===bz);
-      const h = isSkyscraper ? 45 + Math.random()*20 : 12 + Math.random()*18;
-      const key = isSkyscraper ? 'skyscraper' : 'building';
-      spawnGLB(key, bx, bz, h, Math.random() * Math.PI * 2);
-      // Register collision footprint
-      staticBuildings.push({ minX: bx-blockW/2, maxX: bx+blockW/2, minZ: bz-blockD/2, maxZ: bz+blockD/2 });
+
+      if (isSkyscraper) {
+        // One tall skyscraper per center block
+        const h = 45 + Math.random() * 20;
+        spawnGLB('skyscraper', bx, bz, h, Math.random() * Math.PI * 2);
+        staticBuildings.push({ minX: bx-blockW/2, maxX: bx+blockW/2, minZ: bz-blockD/2, maxZ: bz+blockD/2 });
+      } else {
+        // Pack 4 smaller buildings per outer block in a 2x2 grid
+        const offsets = [[-0.28,-0.28],[-0.28,0.28],[0.28,-0.28],[0.28,0.28]];
+        offsets.forEach(([ox, oz]) => {
+          const px = bx + ox * blockW;
+          const pz = bz + oz * blockD;
+          const h = 10 + Math.random() * 14;
+          spawnGLB('building', px, pz, h, Math.random() * Math.PI * 2);
+          const hw = blockW * 0.22, hd = blockD * 0.22;
+          staticBuildings.push({ minX: px-hw, maxX: px+hw, minZ: pz-hd, maxZ: pz+hd });
+        });
+      }
     }
   }
 }
 
 // ── GLB TRAFFIC LIGHTS ──
+// One traffic light per intersection corner, offset to pavement edge
 function buildGLBTrafficLights() {
   const gL = [-120,-60,0,60,120];
   gL.forEach(x => {
     gL.forEach(z => {
-      if (x === 0 && z === 0) return;
-      // one light per corner of each intersection, slightly offset from center
-      const ox = ROAD_W/2 + 1.5, oz = ROAD_W/2 + 1.5;
-      spawnGLB('trafficlight', x + ox, z + oz, 7, 0);
+      spawnGLB('trafficlight', x + ROAD_W/2 + 1, z + ROAD_W/2 + 1, 7, 0);
     });
   });
 }
 
-// ── GLB SIDEWALKS ──
-function buildGLBSidewalks() {
-  const tmpl = glbTemplates['sidewalk'];
-  if (!tmpl) return;
-  const tileLen = 12; // match ROAD_W
-  const gL = [-120,-60,0,60,120];
-  // Sidewalk strips along horizontal roads
-  gL.forEach(z => {
-    for (let x = -CITY_SIZE; x < CITY_SIZE; x += tileLen) {
-      spawnGLB('sidewalk', x, z + ROAD_W/2 + 2, 0.4, 0);
-      spawnGLB('sidewalk', x, z - ROAD_W/2 - 2, 0.4, 0);
-    }
-  });
-  // Sidewalk strips along vertical roads
-  gL.forEach(x => {
-    for (let z = -CITY_SIZE; z < CITY_SIZE; z += tileLen) {
-      spawnGLB('sidewalk', x + ROAD_W/2 + 2, z, 0.4, Math.PI/2);
-      spawnGLB('sidewalk', x - ROAD_W/2 - 2, z, 0.4, Math.PI/2);
-    }
-  });
-}
+// ── GLB SIDEWALKS — REMOVED ──
+// Sidewalks are handled by the existing procedural pavement strips in buildCityGrid()
+// which already look correct and cost almost nothing. GLB sidewalk tiles caused
+// misalignment, z-fighting, and frame rate issues when tiled hundreds of times.
+function buildGLBSidewalks() { /* intentionally empty */ }
 
 // ── GLB HIGHWAY ROAD ──
-// Tile the highway road GLB along the 4 highway sections (outside city ring)
+// Only on the 4 outer highway sections, limited tiles to keep draw calls low
 function buildGLBHighwayRoad() {
-  const tmpl = glbTemplates['road'];
-  if (!tmpl) return;
-  const tileLen = 20;
-  const halfLen = (MAP_SIZE - CITY_SIZE) / 2;
-  const cityEdge = CITY_SIZE;
-  for (let d = cityEdge + tileLen/2; d < MAP_SIZE - tileLen/2; d += tileLen) {
-    spawnGLB('road',  0,  d, 3, 0);           // North highway
-    spawnGLB('road',  0, -d, 3, 0);           // South highway
-    spawnGLB('road',  d,  0, 3, Math.PI/2);   // East highway
-    spawnGLB('road', -d,  0, 3, Math.PI/2);   // West highway
+  if (!glbTemplates['road']) return;
+  const tileLen = 30; // large tiles to keep count low
+  for (let d = CITY_SIZE + tileLen/2; d < MAP_SIZE - tileLen/2; d += tileLen) {
+    spawnGLB('road',  0,  d, 4, 0);
+    spawnGLB('road',  0, -d, 4, 0);
+    spawnGLB('road',  d,  0, 4, Math.PI/2);
+    spawnGLB('road', -d,  0, 4, Math.PI/2);
   }
 }
 
