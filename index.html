@@ -340,7 +340,11 @@ function spawnGLB(key, x, z, targetHeight, rotY) {
   clone.scale.setScalar(scale);
   clone.position.set(x - center.x * scale, -minY * scale, z - center.z * scale);
   clone.rotation.y = rotY || 0;
-  clone.traverse(child => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; } });
+  // castShadow disabled on all GLB clones — prevents shadow map overflow,
+  // shadow flicker, and the frame-drop spikes caused by many shadow casters.
+  clone.traverse(child => {
+    if (child.isMesh) { child.castShadow = false; child.receiveShadow = true; }
+  });
   scene.add(clone);
   if (tmpl.userData.animations.length > 0) {
     const mixer = new THREE.AnimationMixer(clone);
