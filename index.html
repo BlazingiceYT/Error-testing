@@ -356,67 +356,80 @@ function spawnGLB(key, x, z, targetHeight, rotY) {
 
 // ── GLB BUILDINGS ──
 // ── BUILDING PLACEMENT HELPER ──
-// Scales a GLB building to fit a slot along the road, faces the road, registers collision.
-function placeBuilding(key, tmpl, x, z, targetH, rotY) {
+function placeBuilding(tmpl, x, z, targetH, rotY) {
   if (!tmpl) return;
   const scale  = targetH / (tmpl.userData.size.y || 1);
   const center = tmpl.userData.center;
-  const minY   = tmpl.userData.minY;
   const clone  = tmpl.clone(true);
   clone.scale.setScalar(scale);
-  clone.position.set(x - center.x * scale, -minY * scale, z - center.z * scale);
+  clone.position.set(x - center.x * scale, -tmpl.userData.minY * scale, z - center.z * scale);
   clone.rotation.y = rotY;
   clone.traverse(child => {
     if (child.isMesh) { child.castShadow = false; child.receiveShadow = true; }
   });
   scene.add(clone);
+  // Rotation-aware AABB: properly compute world-space extents after rotation
   const hw = (tmpl.userData.size.x * scale) / 2;
   const hd = (tmpl.userData.size.z * scale) / 2;
-  staticBuildings.push({ minX: x - hw, maxX: x + hw, minZ: z - hd, maxZ: z + hd });
+  const cosR = Math.abs(Math.cos(rotY));
+  const sinR = Math.abs(Math.sin(rotY));
+  const wHW  = hw * cosR + hd * sinR;   // world-space half-width (X axis)
+  const wHD  = hw * sinR + hd * cosR;   // world-space half-depth (Z axis)
+  // Expand by 20% so player can't clip through corners
+  staticBuildings.push({ minX: x - wHW * 1.2, maxX: x + wHW * 1.2, minZ: z - wHD * 1.2, maxZ: z + wHD * 1.2 });
 }
 
 // ── GLB BUILDINGS — rows along every road ──
-// Buildings line both sides of every city road, creating a continuous street-wall
-// effect like the reference image. Skyscrapers placed at center intersections.
 function buildGLBBuildings() {
-  const bTmpl  = glbTemplates['building'];
-  const sTmpl  = glbTemplates['skyscraper'];
+  const bTmpl = glbTemplates['building'];
+  const sTmpl = glbTemplates['skyscraper'];
   if (!bTmpl) return;
 
   const gL      = [-120, -60, 0, 60, 120];
-  const SLOT    = 15;                     // spacing between buildings along road (units)
-  const SETBACK = ROAD_W / 2 + 4;        // distance from road centre to building centre
-  const CLEAR   = ROAD_W / 2 + SLOT * 0.8; // gap around intersections (no buildings here)
+  const SLOT    = 15;
+  const SETBACK = ROAD_W / 2 + 4;
+  const CLEAR   = ROAD_W / 2 + SLOT * 0.9;
 
-  // Buildings along horizontal roads (z = constant, vary x)
+  // Regular buildings lining every horizontal road
   gL.forEach(roadZ => {
     for (let x = -CITY_SIZE + SLOT / 2; x < CITY_SIZE; x += SLOT) {
       if (gL.some(gx => Math.abs(x - gx) < CLEAR)) continue;
-      const isCentre = sTmpl && Math.abs(roadZ) <= 60 && Math.abs(x) <= 60;
-      const h = isCentre ? 30 + Math.random() * 25 : 10 + Math.random() * 10;
-      const key = isCentre ? 'skyscraper' : 'building';
-      const tmpl = isCentre ? sTmpl : bTmpl;
-      placeBuilding(key, tmpl, x, roadZ + SETBACK, h, Math.PI);   // north side
-      placeBuilding(key, tmpl, x, roadZ - SETBACK, h, 0);          // south side
+      const h = 8 + Math.random() * 10;
+      placeBuilding(bTmpl, x, roadZ + SETBACK, h, Math.PI);
+      placeBuilding(bTmpl, x, roadZ - SETBACK, h, 0);
     }
   });
 
-  // Buildings along vertical roads (x = constant, vary z)
+  // Regular buildings lining every vertical road
   gL.forEach(roadX => {
     for (let z = -CITY_SIZE + SLOT / 2; z < CITY_SIZE; z += SLOT) {
       if (gL.some(gz => Math.abs(z - gz) < CLEAR)) continue;
-      const isCentre = sTmpl && Math.abs(roadX) <= 60 && Math.abs(z) <= 60;
-      const h = isCentre ? 30 + Math.random() * 25 : 10 + Math.random() * 10;
-      const key = isCentre ? 'skyscraper' : 'building';
-      const tmpl = isCentre ? sTmpl : bTmpl;
-      placeBuilding(key, tmpl, roadX + SETBACK, z, h, -Math.PI / 2);  // east side
-      placeBuilding(key, tmpl, roadX - SETBACK, z, h,  Math.PI / 2);  // west side
+      const h = 8 + Math.random() * 10;
+      placeBuilding(bTmpl, roadX + SETBACK, z, h, -Math.PI / 2);
+      placeBuilding(bTmpl, roadX - SETBACK, z, h,  Math.PI / 2);
     }
   });
+
+  // 4 standalone skyscrapers as downtown landmarks between center intersections
+  if (sTmpl) {
+    [[-30,-30],[-30,30],[30,-30],[30,30]].forEach(([sx,sz]) => {
+      const h = 50 + Math.random() * 20;
+      const scale  = h / (sTmpl.userData.size.y || 1);
+      const center = sTmpl.userData.center;
+      const clone  = sTmpl.clone(true);
+      clone.scale.setScalar(scale);
+      clone.position.set(sx - center.x * scale, -sTmpl.userData.minY * scale, sz - center.z * scale);
+      clone.rotation.y = Math.random() * Math.PI * 2;
+      clone.traverse(child => { if (child.isMesh) { child.castShadow = false; child.receiveShadow = true; } });
+      scene.add(clone);
+      const hw = (sTmpl.userData.size.x * scale) / 2;
+      const hd = (sTmpl.userData.size.z * scale) / 2;
+      staticBuildings.push({ minX: sx - hw, maxX: sx + hw, minZ: sz - hd, maxZ: sz + hd });
+    });
+  }
 }
 
 // ── GLB TRAFFIC LIGHTS ──
-// One per intersection, on the corner of the pavement
 function buildGLBTrafficLights() {
   const gL = [-120, -60, 0, 60, 120];
   gL.forEach(x => {
@@ -426,9 +439,8 @@ function buildGLBTrafficLights() {
   });
 }
 
-// Sidewalks and highway road handled by existing procedural system
-function buildGLBSidewalks()    { }
-function buildGLBHighwayRoad()  { }
+function buildGLBSidewalks()   { }
+function buildGLBHighwayRoad() { }
 
 
 // ── TERRAIN WITH BUMPS ──
