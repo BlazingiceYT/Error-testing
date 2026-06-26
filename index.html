@@ -379,34 +379,61 @@ function placeBuilding(tmpl, x, z, targetH, rotY) {
   staticBuildings.push({ minX: x - wHW * 1.2, maxX: x + wHW * 1.2, minZ: z - wHD * 1.2, maxZ: z + wHD * 1.2 });
 }
 
+function getBuildingFootprint(tmpl, targetH, rotY) {
+  const scale = targetH / (tmpl.userData.size.y || 1);
+  const hw = (tmpl.userData.size.x * scale) / 2;
+  const hd = (tmpl.userData.size.z * scale) / 2;
+  const cosR = Math.abs(Math.cos(rotY));
+  const sinR = Math.abs(Math.sin(rotY));
+  return {
+    halfX: hw * cosR + hd * sinR,
+    halfZ: hw * sinR + hd * cosR,
+  };
+}
+
 // ── GLB BUILDINGS — rows along every road ──
 function buildGLBBuildings() {
   const bTmpl = glbTemplates['building'];
   const sTmpl = glbTemplates['skyscraper'];
   if (!bTmpl) return;
 
-  const gL      = [-120, -60, 0, 60, 120];
-  const SLOT    = 15;
-  const SETBACK = ROAD_W / 2 + 4;
-  const CLEAR   = ROAD_W / 2 + SLOT * 0.9;
+  const gL = [-120, -60, 0, 60, 120];
+  const SLOT = 15;
+  const SIDEWALK_HALF_WIDTH = 1.5;
+  const BUILDING_GAP = 1.8;
+  const roadSideClearance = ROAD_W / 2 + SIDEWALK_HALF_WIDTH * 2 + BUILDING_GAP;
 
-  // Regular buildings lining every horizontal road
+  // Regular buildings lining every horizontal road. The setback is calculated
+  // from each scaled/rotated model's footprint, so the building's nearest wall
+  // sits outside both the road and sidewalk instead of clipping into the lane.
   gL.forEach(roadZ => {
     for (let x = -CITY_SIZE + SLOT / 2; x < CITY_SIZE; x += SLOT) {
-      if (gL.some(gx => Math.abs(x - gx) < CLEAR)) continue;
       const h = 8 + Math.random() * 10;
-      placeBuilding(bTmpl, x, roadZ + SETBACK, h, Math.PI);
-      placeBuilding(bTmpl, x, roadZ - SETBACK, h, 0);
+      const rotSouth = Math.PI;
+      const rotNorth = 0;
+      const fpSouth = getBuildingFootprint(bTmpl, h, rotSouth);
+      const fpNorth = getBuildingFootprint(bTmpl, h, rotNorth);
+      const intersectionClear = ROAD_W / 2 + Math.max(fpSouth.halfX, fpNorth.halfX) + BUILDING_GAP;
+      if (gL.some(gx => Math.abs(x - gx) < intersectionClear)) continue;
+      placeBuilding(bTmpl, x, roadZ + roadSideClearance + fpSouth.halfZ, h, rotSouth);
+      placeBuilding(bTmpl, x, roadZ - roadSideClearance - fpNorth.halfZ, h, rotNorth);
     }
   });
 
-  // Regular buildings lining every vertical road
+  // Regular buildings lining every vertical road. As above, include the model's
+  // world-space half-width in the setback so no rotated building extends into
+  // the road surface.
   gL.forEach(roadX => {
     for (let z = -CITY_SIZE + SLOT / 2; z < CITY_SIZE; z += SLOT) {
-      if (gL.some(gz => Math.abs(z - gz) < CLEAR)) continue;
       const h = 8 + Math.random() * 10;
-      placeBuilding(bTmpl, roadX + SETBACK, z, h, -Math.PI / 2);
-      placeBuilding(bTmpl, roadX - SETBACK, z, h,  Math.PI / 2);
+      const rotEast = -Math.PI / 2;
+      const rotWest = Math.PI / 2;
+      const fpEast = getBuildingFootprint(bTmpl, h, rotEast);
+      const fpWest = getBuildingFootprint(bTmpl, h, rotWest);
+      const intersectionClear = ROAD_W / 2 + Math.max(fpEast.halfZ, fpWest.halfZ) + BUILDING_GAP;
+      if (gL.some(gz => Math.abs(z - gz) < intersectionClear)) continue;
+      placeBuilding(bTmpl, roadX + roadSideClearance + fpEast.halfX, z, h, rotEast);
+      placeBuilding(bTmpl, roadX - roadSideClearance - fpWest.halfX, z, h, rotWest);
     }
   });
 
